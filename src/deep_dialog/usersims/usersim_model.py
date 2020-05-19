@@ -32,6 +32,7 @@ class ModelBasedSimulator(UserSimulator):
         self.num_actions_user = len(self.feasible_actions_users)
 
         self.max_turn = params['max_turn'] + 4
+        #print(self.act_cardinality, self.slot_cardinality, self.max_turn) #11,29,44
         self.state_dimension = 2 * self.act_cardinality + 9 * self.slot_cardinality + 3 + self.max_turn
 
         self.slot_err_probability = params['slot_err_probability']
@@ -162,8 +163,12 @@ class ModelBasedSimulator(UserSimulator):
         :param num_batches: self-explained
         :return: None
         """
-        self.total_loss = 0
+        
         for iter_batch in range(num_batches):
+            self.total_loss = 0
+            correct = 0
+            correct_a = 0
+            total = 0
             for iter in range(len(self.training_examples) / (batch_size)):
                 self.optimizer.zero_grad()
 
@@ -173,20 +178,38 @@ class ModelBasedSimulator(UserSimulator):
                 reward = torch.FloatTensor(batch.reward)
                 term = torch.FloatTensor(np.asarray(batch.term, dtype=np.int32))
                 user_action = torch.LongTensor(batch.user_action).squeeze(1)
+                
+                next_state = torch.FloatTensor(batch.next_state)
+                sim = F.cosine_similarity(state[:,:272], next_state) > 0.99
+                #print (sim)
+                #print (state.size(),next_state.size())
 
                 reward_, term_, user_action_ = self.model(state, action)
-
-                loss = F.mse_loss(reward_, reward) + \
-                       F.binary_cross_entropy_with_logits(term_, term) + \
-                       F.nll_loss(user_action_, user_action)
+                
+                # termination
+                total += (term == 1).sum().item()
+                correct += ((term_ > 0) & (term == 1)).sum().item()
+                
+                # action
+                #print (user_action_.max(0)[1], user_action)
+                correct_a += ((user_action_.max(1)[1]) == user_action).sum().item()
+                
+                r_loss = F.mse_loss(reward_, reward)
+                t_loss = F.binary_cross_entropy_with_logits(term_, term)
+                a_loss = F.nll_loss(user_action_, user_action)
+                
+                loss = r_loss + t_loss + a_loss
                 loss.backward()
-
+                #print (r_loss.item(), t_loss.item(), a_loss.item())
+                
                 self.optimizer.step()
                 self.total_loss += loss.item()
-
+            print ('termination', correct, total, 'U_act', correct_a)
             print ("Total cost for user modeling: %.4f, training replay pool %s" % (
                 float(self.total_loss) / (float(len(self.training_examples)) / float(batch_size)),
                 len(self.training_examples)))
+            
+            
 
     def train_by_iter(self, batch_size=1, num_batches=1):
         """
@@ -299,10 +322,11 @@ class ModelBasedSimulator(UserSimulator):
 
     def register_experience_replay_tuple(self, s_t, agent_a_t, s_tplus1, reward, term, user_a_t):
         """ Register feedback from the environment, to be stored as future training data for world model"""
-
+        
         state_t_rep = self.prepare_state_representation(s_t)
         goal_rep = self.prepare_user_goal_representation(self.sample_goal)
-        state_t_rep = np.hstack([state_t_rep, goal_rep])
+        state_t_rep = np.hstack([state_t_rep, goal_rep]) 
+        #print(state_t_rep.shape, goal_rep.shape)
         agent_action_t = agent_a_t
         user_action_t = user_a_t
         action_idx = self.action_index(copy.deepcopy(user_a_t))
@@ -317,6 +341,7 @@ class ModelBasedSimulator(UserSimulator):
             reward_t = -0.1
 
         state_tplus1_rep = self.prepare_state_representation(s_tplus1)
+        # print (state_tplus1_rep.shape)
         training_example_for_user = (state_t_rep, agent_action_t, state_tplus1_rep, reward_t, term, action_idx)
 
         if self.predict_model:

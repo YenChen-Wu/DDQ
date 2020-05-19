@@ -13,14 +13,20 @@ class SimulatorModel(nn.Module):
                  state_size,
                  user_action_size,
                  reward_size=1,
-                 termination_size=1):
+                 termination_size=1,
+                 similarity_size=1):
         super(SimulatorModel, self).__init__()
+        
+        self.agent_action_size = agent_action_size
 
         self.linear_i2h = nn.Linear(state_size, hidden_size)
         self.agent_emb = nn.Embedding(agent_action_size, hidden_size)
         self.linear_h2r = nn.Linear(hidden_size, reward_size)
         self.linear_h2t = nn.Linear(hidden_size, termination_size)
         self.linear_h2a = nn.Linear(hidden_size, user_action_size)
+        self.linear_h2s = nn.Linear(hidden_size, similarity_size)
+        #self.linear_h2s = nn.Linear(hidden_size, similarity_size)
+        
 
     def forward(self, s, a):
         h_s = self.linear_i2h(s)
@@ -41,5 +47,21 @@ class SimulatorModel(nn.Module):
         reward = self.linear_h2r(h)
         term = F.sigmoid(self.linear_h2t(h))
         action = F.log_softmax(self.linear_h2a(h), 1)
+                
 
         return reward, term, action.argmax(1)
+    
+    def get_mask(self, s):
+        # implement mask here, 1 is blocked
+        for a in range(self.agent_action_size):
+            h_s = self.linear_i2h(s)
+            h_a = self.agent_emb(a).squeeze(1)
+            h = F.tanh(h_s + h_a)
+            
+            reward = self.linear_h2r(h)
+            term = F.sigmoid(self.linear_h2t(h))
+            sim = self.linear_h2s(h)
+            T_mask = (term > 0) & (reward < 0)
+            S_mask = sim > 0.99
+            mask = T_mask | S_mask
+        return mask

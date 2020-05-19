@@ -486,7 +486,7 @@ def run_episodes(count, status):
 
             agent.predict_mode = False
             world_model.predict_mode = False
-            simulation_res = simulation_epoch(50)
+            simulation_res = simulation_epoch(params['simulation_epoch_size'])
 
             performance_records['success_rate'][episode] = simulation_res['success_rate']
             performance_records['ave_turns'][episode] = simulation_res['ave_turns']

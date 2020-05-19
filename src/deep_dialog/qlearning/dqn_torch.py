@@ -25,4 +25,7 @@ class DQN(nn.Module):
     def predict(self, x):
         y = self.forward(x)
         return torch.argmax(y, 1)
+    
+    def predict_prob(self, x):
+        return self.forward(x)
 

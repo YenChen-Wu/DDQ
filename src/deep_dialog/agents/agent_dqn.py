@@ -55,9 +55,11 @@ class AgentDQN(Agent):
         self.warm_start = params.get('warm_start', 0)
 
         self.max_turn = params['max_turn'] + 5
+        print(self.max_turn)
         self.state_dimension = 2 * self.act_cardinality + 7 * self.slot_cardinality + 3 + self.max_turn
 
         self.dqn = DQN(self.state_dimension, self.hidden_size, self.num_actions).to(DEVICE)
+        
         self.target_dqn = DQN(self.state_dimension, self.hidden_size, self.num_actions).to(DEVICE)
         self.target_dqn.load_state_dict(self.dqn.state_dict())
         self.target_dqn.eval()
@@ -225,7 +227,11 @@ class AgentDQN(Agent):
         """ Return action from DQN"""
 
         with torch.no_grad():
-            action = self.dqn.predict(torch.FloatTensor(state_representation))
+            #action = self.dqn.predict(torch.FloatTensor(state_representation))
+            #print (torch.FloatTensor(state_representation).size())
+            action = self.dqn.predict_prob(torch.FloatTensor(state_representation))
+            action = torch.argmax(action, 1)
+            #mask = self.user_planning.model.get_mask(torch.FloatTensor(state_representation))
         return action
 
     def action_index(self, act_slot_response):
@@ -245,7 +251,7 @@ class AgentDQN(Agent):
         action_t = self.action
         reward_t = reward
         state_tplus1_rep = self.prepare_state_representation(s_tplus1)
-        st_user = self.prepare_state_representation(s_tplus1)
+        st_user = self.prepare_state_representation(st_user) # ???
         training_example = (state_t_rep, action_t, reward_t, state_tplus1_rep, episode_over, st_user)
 
         if self.predict_mode == False:  # Training Mode
